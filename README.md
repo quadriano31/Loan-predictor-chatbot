@@ -1,6 +1,7 @@
 ﻿# Loan-predictor-chatbot
 
-## This application simplifies the deployment of your machine learning model as a chatbot using DialogFlow and Flask
+## This application simplifies the deployment of your machine learning model as a chatbot using DialogFlow and the Flask.
+
 
 
 ## Getting started
