@@ -1,100 +1,107 @@
 import numpy as np
-from flask import Flask, request, make_response,render_template,jsonify
+from flask import Flask, request, make_response, render_template, jsonify
 import json
 import pickle
+import logging
 from flask_cors import cross_origin
 
+# Initialize Flask app
 app = Flask(__name__)
+
+# Load the trained model
 model = pickle.load(open('rfc.pkl', 'rb'))
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+
+# Homepage route
 @app.route('/')
 def hello():
     return render_template('home.html')
 
+# Prediction route
 @app.route('/predict', methods=['POST'])
 def predict():
-     json_ = request.json
-     query = (json_)
-     prediction = model.predict(query)
-     return jsonify({'prediction': list(prediction)})
+    # Get JSON data from the request
+    json_data = request.json
+    
+    try:
+        # Convert JSON data to a numpy array
+        query = np.array(json_data)
+        
+        # Make prediction using the model
+        prediction = model.predict(query)
+        
+        # Convert prediction to a list and return as JSON response
+        return jsonify({'prediction': prediction.tolist()})
+    
+    except Exception as e:
+        # Log the exception and return an error response
+        logging.error(str(e))
+        return jsonify({'error': 'An error occurred during prediction.'})
 
-
-# geting and sending response to dialogflow
-@app.route('/webhook/', methods=['GET','POST'])
+# Webhook route for Dialogflow integration
+@app.route('/webhook/', methods=['GET', 'POST'])
 @cross_origin()
 def webhook():
-
+    # Get JSON data from the request
     req = request.get_json(silent=True, force=True)
-
-    print("req")
     
-
+    # Process the request and generate a response
     res = processRequest(req)
-
+    
+    # Convert response to JSON and send the response
     res = json.dumps(res, indent=4)
-    #print(res)
     r = make_response(res)
     r.headers['Content-Type'] = 'application/json'
     return r
 
-
-# processing the request from dialogflow
+# Process the request from Dialogflow
 def processRequest(req):
-
-    #sessionID=req.get('responseId')
     result = req.get("queryResult")
-    #print(result)
-
     parameters = result.get("parameters")
-    ApplicantIncome=parameters.get("Income")
+    ApplicantIncome = parameters.get("Income")
     CoapplicantIncome = parameters.get("CoapplicantIncome")
-    LoanAmount=parameters.get("LoanAmount")
-    Credit_History=parameters.get("Credit_History")
+    LoanAmount = parameters.get("LoanAmount")
+    Credit_History = parameters.get("Credit_History")
     
-
-    if str.lower(Credit_History) == 'yes':
-        Credit_History = int(1)
-    elif str.lower(Credit_History) == 'no':
-        Credit_History = int(0)
-    else:
-        return {
-            "fulfillmentText": "Error please start again and enter the correct information"
-            
-        }
-
     try:
-        int_features = [ApplicantIncome, CoapplicantIncome, LoanAmount,Credit_History]
+        if Credit_History == "Yes":
+            Credit_History = 1
+        elif Credit_History == "No":
+            Credit_History = 0
+        # Convert string values to integers
+        Credit_History = int(Credit_History)
+        
+        # Create the feature vector
+        int_features = [ApplicantIncome, CoapplicantIncome, LoanAmount, Credit_History]
         final_features = [np.array(int_features)]
-    
+        
     except ValueError:
-        return {
-            "fulfillmentText": "Incorrect information supplied"
-        }
+        # Handle incorrect information supplied
+        return {"fulfillmentText": "Incorrect information supplied."}
     
-
-    print(final_features) 
-
+    # Get the intent name
     intent = result.get("intent").get('displayName')
     
-    if (intent=='Default Welcome Intent - yes'):
-        prediction = model.predict(final_features)
-        print(prediction)
-    
-    	
-        if(prediction=='Y'):
-            status = 'Congratulations you are eligible for a loan 😀'
-        else:
-            status = 'We are sorry you are not eligible for a loan at the moment'
-
-       
-        fulfillmentText= status
+    if intent == 'Default Welcome Intent - yes':
+        try:
+            # Make prediction using the model
+            prediction = model.predict(final_features)
+            
+            if prediction == 'Y':
+                status = 'Congratulations! You are eligible for a loan. 😀'
+            else:
+                status = 'We are sorry, you are not eligible for a loan at the moment.'
+            
+            fulfillmentText = status
+            
+            return {"fulfillmentText": fulfillmentText}
         
-        print(fulfillmentText)
-        print(prediction)
-        return {
-            "fulfillmentText": fulfillmentText
-        }
-    
+        except Exception as e:
+            # Log the exception and return an error response
+            logging.error(str(e))
+            return {"fulfillmentText": "An error occurred during prediction."}
 
 if __name__ == '__main__':
-    app.run()
+    app.run(port=5000)
